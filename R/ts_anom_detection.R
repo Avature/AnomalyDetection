@@ -12,8 +12,8 @@
 #' @param alpha The level of statistical significance with which to accept or reject anomalies.
 #' @param only_last Find and report anomalies only within the last day or hr in the time series.
 #' \code{NULL | 'day' | 'hr'}.
-#' @param threshold Only report positive going anoms above the threshold specified. Options are:
-#' \code{'None' | 'med_max' | 'p95' | 'p99'}.
+#' @param threshold Only report positive going anoms above the threshold specified.
+#' It must be a function specifing an operation over analyzed distribution to set the value.
 #' @param e_value Add an additional column to the anoms output containing the expected value.
 #' @param longterm Increase anom detection efficacy for time series that are greater than a month.
 #' See Details below.
@@ -29,12 +29,10 @@
 #' \code{longterm} This option should be set when the input time series is longer than a month.
 #' The option enables the approach described in Vallis, Hochenbaum, and Kejariwal (2014).\cr\cr
 #' \code{threshold} Filter all negative anomalies and those anomalies whose magnitude is smaller
-#' than one of the specified thresholds which include: the median
-#' of the daily max values (med_max), the 95th percentile of the daily max values (p95), and the
-#' 99th percentile of the daily max values (p99).
+#' than the output of the given function.
 #' @param title Title for the output plot.
 #' @param verbose Enable debug messages.
-#' @param na.rm Remove any NAs in timestamps.(default: FALSE) 
+#' @param na.rm Remove any NAs in timestamps.(default: FALSE)
 #' @return The returned value is a list with the following components.
 #' @return \item{anoms}{Data frame containing timestamps, values, and optionally expected values.}
 #' @return \item{plot}{A graphical object if plotting was requested by the user. The plot contains
@@ -61,7 +59,7 @@
 #' @export
 #'
 AnomalyDetectionTs <- function(x, max_anoms = 0.10, direction = 'pos',
-                               alpha = 0.05, only_last = NULL, threshold = 'None',
+                               alpha = 0.05, only_last = NULL, threshold = NULL,
                                e_value = FALSE, longterm = FALSE, piecewise_median_period_weeks = 2, plot = FALSE,
                                y_log = FALSE, xlabel = '', ylabel = 'count',
                                title = NULL, verbose=FALSE, na.rm = FALSE){
@@ -82,11 +80,11 @@ AnomalyDetectionTs <- function(x, max_anoms = 0.10, direction = 'pos',
   if (any((names(x) == c("timestamp", "count")) == FALSE)) {
     colnames(x) <- c("timestamp", "count")
   }
-  
+
   if(!is.logical(na.rm)){
     stop("na.rm must be either TRUE (T) or FALSE (F)")
   }
-  
+
   # Deal with NAs in timestamps
   if(any(is.na(x$timestamp))){
     if(na.rm){
@@ -113,8 +111,8 @@ AnomalyDetectionTs <- function(x, max_anoms = 0.10, direction = 'pos',
   if(!is.null(only_last) && !only_last %in% c('day','hr')){
     stop("only_last must be either 'day' or 'hr'")
   }
-  if(!threshold %in% c('None','med_max','p95','p99')){
-    stop("threshold options are: None | med_max | p95 | p99.")
+  if(!is.null(threshold)&&!is.function(threshold)){
+    stop("threshold must be a primitive function or NULL")
   }
   if(!is.logical(e_value)){
     stop("e_value must be either TRUE (T) or FALSE (F)")
@@ -241,18 +239,12 @@ AnomalyDetectionTs <- function(x, max_anoms = 0.10, direction = 'pos',
     }
 
     # Filter the anomalies using one of the thresholding functions if applicable
-    if(threshold != "None"){
+    if(!is.null(threshold)){
       # Calculate daily max values
       periodic_maxs <- tapply(x[[2]],as.Date(x[[1]]),FUN=max)
 
       # Calculate the threshold set by the user
-      if(threshold == 'med_max'){
-        thresh <- median(periodic_maxs)
-      }else if (threshold == 'p95'){
-        thresh <- quantile(periodic_maxs, .95)
-      }else if (threshold == 'p99'){
-        thresh <- quantile(periodic_maxs, .99)
-      }
+      thresh <- threshold(periodic_maxs)
       # Remove any anoms below the threshold
       anoms <- subset(anoms, anoms[[2]] >= thresh)
     }
@@ -341,10 +333,10 @@ AnomalyDetectionTs <- function(x, max_anoms = 0.10, direction = 'pos',
 
   # Fix to make sure date-time is correct and that we retain hms at midnight
   all_anoms[[1]] <- format(all_anoms[[1]], format="%Y-%m-%d %H:%M:%S")
-  
+
   # Store expected values if set by user
   if(e_value) {
-    anoms <- data.frame(timestamp=all_anoms[[1]], anoms=all_anoms[[2]], 
+    anoms <- data.frame(timestamp=all_anoms[[1]], anoms=all_anoms[[2]],
                         expected_value=subset(seasonal_plus_trend[[2]], as.POSIXlt(seasonal_plus_trend[[1]], tz="UTC") %in% all_anoms[[1]]),
                         stringsAsFactors=FALSE)
   } else {
