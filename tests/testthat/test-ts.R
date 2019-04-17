@@ -15,12 +15,13 @@ test_that("both directions, e_value, with longterm", {
   expect_equal(results$plot, NULL)
 })
 
-threshold <- function(vector){
+upper_threshold <- function(vector){
   return(median(vector))
 }
 
 test_that("both directions, e_value, threshold set to med_max", {
-  results <- AnomalyDetectionTs(raw_data, max_anoms=0.02, direction='both', threshold=threshold, e_value=TRUE)
+  results <- AnomalyDetectionTs(raw_data, max_anoms=0.02, direction='both',
+                                upper_threshold=upper_threshold, e_value=TRUE)
   expect_equal(length(results$anoms), 3)
   expect_equal(length(results$anoms[[2L]]), 4)
   expect_equal(results$plot, NULL)
