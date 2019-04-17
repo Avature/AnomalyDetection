@@ -13,7 +13,9 @@
 #' @param period Defines the number of observations in a single period, and used during seasonal
 #' decomposition.
 #' @param only_last Find and report anomalies only within the last period in the time series.
-#' @param threshold Only report positive going anoms above the threshold specified.
+#' @param upper_threshold Only report positive going anoms above the threshold specified.
+# 'It must be a function specifing an operation over analyzed distribution to set the value.
+#' @param lower_threshold Only report negative going anoms below the threshold specified.
 # 'It must be a function specifing an operation over analyzed distribution to set the value.
 #' @param e_value Add an additional column to the anoms output containing the expected value.
 #' @param longterm_period Defines the number of observations for which the trend can be considered
@@ -28,8 +30,10 @@
 #' @details
 #' \code{longterm_period} This option should be set when the input time series is longer than a month.
 #' The option enables the approach described in Vallis, Hochenbaum, and Kejariwal (2014).\cr\cr
-#' \code{threshold} Filter all negative anomalies and those anomalies whose magnitude is smaller
-#' than the output of the given function.
+#' \code{upper_threshold} Filter all anomalies whose magnitude is smaller than the output of the given function.
+#' \code{lower_threshold} Filter all anomalies whose magnitude is greater than the output of the given function.
+#' Combined this two parameters functions as an OR condition, ie, filter all anomalies whose magnitude
+#' is between lower and upper thresholding functions output.
 #' @param title Title for the output plot.
 #' @param verbose Enable debug messages
 #' @return The returned value is a list with the following components.
