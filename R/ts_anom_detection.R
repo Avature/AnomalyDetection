@@ -62,9 +62,11 @@
 #' @seealso \code{\link{AnomalyDetectionVec}}
 #' @export
 #'
-AnomalyDetectionTs <- function(x, max_anoms = 0.10, direction = 'pos',
-                               alpha = 0.05, only_last = NULL, threshold = NULL,
-                               e_value = FALSE, longterm = FALSE, piecewise_median_period_weeks = 2, plot = FALSE,
+AnomalyDetectionTs <- function(x, max_anoms = 0.10, direction = 'both',
+                               alpha = 0.05, only_last = NULL,
+                               upper_threshold = NULL, lower_threshold = NULL,
+                               e_value = FALSE, longterm = FALSE,
+                               piecewise_median_period_weeks = 2, plot = FALSE,
                                y_log = FALSE, xlabel = '', ylabel = 'count',
                                title = NULL, verbose=FALSE, na.rm = FALSE){
 
@@ -100,7 +102,10 @@ AnomalyDetectionTs <- function(x, max_anoms = 0.10, direction = 'pos',
 
   # Sanity check all input parameters
   if(max_anoms > .49){
-    stop(paste("max_anoms must be less than 50% of the data points (max_anoms =", round(max_anoms*length(x[[2]]), 0), " data_points =", length(x[[2]]),")."))
+    stop(
+      paste("max_anoms must be less than 50% of the data points (max_anoms =",
+      round(max_anoms*length(x[[2]]), 0), " data_points =",
+      length(x[[2]]),")."))
   } else if(max_anoms < 0){
     stop("max_anoms must be positive.")
   } else if(max_anoms == 0){
@@ -110,13 +115,18 @@ AnomalyDetectionTs <- function(x, max_anoms = 0.10, direction = 'pos',
     stop("direction options are: pos | neg | both.")
   }
   if(!(0.01 <= alpha || alpha <= 0.1)){
-    if(verbose) message("Warning: alpha is the statistical signifigance, and is usually between 0.01 and 0.1")
+    if(verbose) message(
+      "Warning: alpha is the statistical signifigance,\
+      and is usually between 0.01 and 0.1")
   }
   if(!is.null(only_last) && !only_last %in% c('day','hr')){
     stop("only_last must be either 'day' or 'hr'")
   }
-  if(!is.null(threshold)&&!is.function(threshold)){
-    stop("threshold must be a primitive function or NULL")
+  if(!is.null(upper_threshold)&&!is.function(upper_threshold)){
+    stop("upper_threshold must be a primitive function or NULL")
+  }
+  if(!is.null(lower_threshold)&&!is.function(lower_threshold)){
+    stop("lower_threshold must be a primitive function or NULL")
   }
   if(!is.logical(e_value)){
     stop("e_value must be either TRUE (T) or FALSE (F)")
@@ -242,16 +252,30 @@ AnomalyDetectionTs <- function(x, max_anoms = 0.10, direction = 'pos',
       anoms <- data.frame(timestamp=numeric(0), count=numeric(0))
     }
 
-    # Filter the anomalies using one of the thresholding functions if applicable
-    if(!is.null(threshold)){
-      # Calculate daily max values
+    # Filter the anomalies using the thresholding functions if applicable
+    if (!is.null(upper_threshold) || !is.null(lower_threshold)){
+      # Calculate daily min, max values
       periodic_maxs <- tapply(x[[2]],as.Date(x[[1]]),FUN=max)
-
-      # Calculate the threshold set by the user
-      thresh <- threshold(periodic_maxs)
-      # Remove any anoms below the threshold
-      anoms <- subset(anoms, anoms[[2]] >= thresh)
+      periodic_mins <- tapply(x[[2]],as.Date(x[[1]]),FUN=min)
+      # Set thresh values specified by thresholding functions or defaults
+      if(!is.null(upper_threshold)){
+        # Calculate the thresholds set by the user
+        upper_thresh <- upper_threshold(periodic_maxs)
+      } else{
+        # Set thresh to an unfiltering value
+        upper_thresh <- max(periodic_maxs)
+      }
+      if(!is.null(lower_threshold)){
+        # Calculate the thresholds set by the user
+        lower_thresh <- lower_threshold(periodic_mins)
+      } else{
+        # Set thresh to an unfiltering value
+        lower_thresh <- min(periodic_mins)
+      }
+      # Remove any anoms above or below the thresholds
+      anoms <- subset(anoms, upper_thresh < anoms[[2]] | anoms[[2]] < lower_thresh)
     }
+
     all_anoms <- rbind(all_anoms, anoms)
     seasonal_plus_trend <- rbind(seasonal_plus_trend, data_decomp)
   }
