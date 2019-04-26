@@ -13,7 +13,9 @@
 #' @param period Defines the number of observations in a single period, and used during seasonal
 #' decomposition.
 #' @param only_last Find and report anomalies only within the last period in the time series.
-#' @param threshold Only report positive going anoms above the threshold specified.
+#' @param upper_threshold Only report positive going anoms above the threshold specified.
+# 'It must be a function specifing an operation over analyzed distribution to set the value.
+#' @param lower_threshold Only report negative going anoms below the threshold specified.
 # 'It must be a function specifing an operation over analyzed distribution to set the value.
 #' @param e_value Add an additional column to the anoms output containing the expected value.
 #' @param longterm_period Defines the number of observations for which the trend can be considered
@@ -28,8 +30,10 @@
 #' @details
 #' \code{longterm_period} This option should be set when the input time series is longer than a month.
 #' The option enables the approach described in Vallis, Hochenbaum, and Kejariwal (2014).\cr\cr
-#' \code{threshold} Filter all negative anomalies and those anomalies whose magnitude is smaller
-#' than the output of the given function.
+#' \code{upper_threshold} Filter all anomalies whose magnitude is smaller than the output of the given function.
+#' \code{lower_threshold} Filter all anomalies whose magnitude is greater than the output of the given function.
+#' Combined this two parameters functions as an OR condition, ie, filter all anomalies whose magnitude
+#' is between lower and upper thresholding functions output.
 #' @param title Title for the output plot.
 #' @param verbose Enable debug messages
 #' @return The returned value is a list with the following components.
@@ -56,9 +60,10 @@
 #' only_last=TRUE, plot=TRUE)
 #' @seealso \code{\link{AnomalyDetectionTs}}
 #' @export
-AnomalyDetectionVec = function(x, max_anoms=0.10, direction='pos',
+AnomalyDetectionVec = function(x, max_anoms=0.10, direction='both',
                                alpha=0.05, period=NULL, only_last=F,
-                               threshold=NULL, e_value=F, longterm_period=NULL,
+                               upper_threshold=NULL, lower_threshold=NULL,
+                               e_value=F, longterm_period=NULL,
                                plot=F, y_log=F, xlabel='', ylabel='count',
                                title=NULL, verbose=FALSE){
 
@@ -87,8 +92,11 @@ AnomalyDetectionVec = function(x, max_anoms=0.10, direction='pos',
   if(!is.logical(only_last)){
     stop("only_last must be either TRUE (T) or FALSE (F)")
   }
-  if(!is.null(threshold)&&!is.function(threshold)){
-    stop("threshold must be a primitive function or NULL")
+  if(!is.null(upper_threshold)&&!is.function(upper_threshold)){
+    stop("upper_threshold must be a primitive function or NULL")
+  }
+  if(!is.null(lower_threshold)&&!is.function(lower_threshold)){
+    stop("lower_threshold must be a primitive function or NULL")
   }
   if(!is.logical(e_value)){
     stop("e_value must be either TRUE (T) or FALSE (F)")
@@ -171,20 +179,35 @@ AnomalyDetectionVec = function(x, max_anoms=0.10, direction='pos',
       anoms <- data.frame(timestamp=numeric(0), count=numeric(0))
     }
 
-    # Filter the anomalies using one of the thresholding functions if applicable
-    if(!is.null(threshold)){
-      # Calculate daily max values
+    # Filter the anomalies using the thresholding functions if applicable
+    if (!is.null(upper_threshold) || !is.null(lower_threshold)){
+      # Calculate daily min, max values
       if(!is.null(longterm_period)){
         periodic_maxs <- tapply(all_data[[i]][[2]], c(0:(longterm_period-1))%/%period, FUN=max)
+        periodic_mins <- tapply(all_data[[i]][[2]], c(0:(longterm_period-1))%/%period, FUN=min)
       }else{
         periodic_maxs <- tapply(all_data[[i]][[2]], c(0:(num_obs-1))%/%period, FUN=max)
+        periodic_mins <- tapply(all_data[[i]][[2]], c(0:(num_obs-1))%/%period, FUN=min)
       }
-
-      # Calculate the threshold set by the user
-      thresh <- threshold(periodic_maxs)
-      # Remove any anoms below the threshold
-      anoms <- subset(anoms, anoms[[2]] >= thresh)
+      # Set thresh values specified by thresholding functions or defaults
+      if(!is.null(upper_threshold)){
+          # Calculate the thresholds set by the user
+          upper_thresh <- upper_threshold(periodic_maxs)
+      } else{
+        # Set thresh to an unfiltering value
+        upper_thresh <- max(periodic_maxs)
+      }
+      if(!is.null(lower_threshold)){
+        # Calculate the thresholds set by the user
+        lower_thresh <- lower_threshold(periodic_mins)
+      } else{
+        # Set thresh to an unfiltering value
+        lower_thresh <- min(periodic_mins)
+      }
+      # Remove any anoms above or below the thresholds
+      anoms <- subset(anoms, upper_thresh < anoms[[2]] | anoms[[2]] < lower_thresh)
     }
+
     all_anoms <- rbind(all_anoms, anoms)
     seasonal_plus_trend <- rbind(seasonal_plus_trend, data_decomp)
   }
